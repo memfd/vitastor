@@ -36,3 +36,8 @@ add_executable(osd_peering_pg_test EXCLUDE_FROM_ALL osd_peering_pg_test.cpp osd_
 target_link_libraries(osd_peering_pg_test tcmalloc_minimal)
 add_dependencies(build_tests osd_peering_pg_test)
 add_test(NAME osd_peering_pg_test COMMAND osd_peering_pg_test)
+
+# osd_primary_chain_check_test
+add_executable(osd_primary_chain_check_test EXCLUDE_FROM_ALL osd_primary_chain_check_test.cpp)
+add_dependencies(build_tests osd_primary_chain_check_test)
+add_test(NAME osd_primary_chain_check_test COMMAND osd_primary_chain_check_test)

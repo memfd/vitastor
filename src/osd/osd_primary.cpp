@@ -2,6 +2,7 @@
 // License: VNPL-1.1 (see README.md for details)
 
 #include "osd_primary.h"
+#include "osd_primary_chain_check.h"
 #include "allocator.h"
 
 // read: read directly or read paired stripe(s), reconstruct, return
@@ -74,41 +75,32 @@ bool osd_t::prepare_primary_rw(osd_op_t *cur_op)
     int stripe_count = (cur_op->req.hdr.opcode == OSD_OP_SCRUB ? 0 :
         (pool_cfg.scheme == POOL_SCHEME_REPLICATED ? 1 : pg_it->second.pg_size));
     int chain_size = 0;
+    std::vector<inode_t> read_chain;
     if (cur_op->req.hdr.opcode == OSD_OP_READ && cur_op->req.rw.meta_revision > 0)
     {
         // Chained read
         // FIXME: Introduce an explicit opcode for chained reads
-        auto inode_it = st_cli.inode_config.find(cur_op->req.rw.inode);
-        if (inode_it->second.mod_revision != cur_op->req.rw.meta_revision)
+        int chain_result = collect_chained_read_inodes(
+            st_cli.inode_config,
+            cur_op->req.rw.inode,
+            pool_cfg.id,
+            cur_op->req.rw.meta_revision,
+            read_chain
+        );
+        if (chain_result != 0)
         {
-            // Client view of the metadata differs from OSD's view
-            // Operation can't be completed correctly, client should retry later
-            finish_op(cur_op, -EPIPE);
-            return false;
-        }
-        // Find parents from the same pool. Optimized reads only work within pools
-        while (inode_it != st_cli.inode_config.end() &&
-            inode_it->second.parent_id &&
-            INODE_POOL(inode_it->second.parent_id) == pool_cfg.id)
-        {
-            // Check for loops - FIXME check it in etcd_state_client
-            if (inode_it->second.parent_id == cur_op->req.rw.inode ||
-                inode_it->second.parent_id == inode_it->second.num ||
-                chain_size > st_cli.inode_config.size())
+            if (chain_result == -EINVAL)
             {
                 printf("Inode %ju from pool %u has a parent_id loop, returning EINVAL in response to read\n",
                     INODE_NO_POOL(cur_op->req.rw.inode), INODE_POOL(cur_op->req.rw.inode));
-                finish_op(cur_op, -EINVAL);
-                return false;
             }
-            chain_size++;
-            inode_it = st_cli.inode_config.find(inode_it->second.parent_id);
+            // Client view of the metadata differs from OSD's view
+            // or the OSD doesn't have the full chain yet.
+            // Operation can't be completed correctly, client should retry later.
+            finish_op(cur_op, chain_result);
+            return false;
         }
-        if (chain_size)
-        {
-            // Add the original inode
-            chain_size++;
-        }
+        chain_size = read_chain.size() > 1 ? read_chain.size() : 0;
     }
     osd_primary_op_data_t *op_data = (osd_primary_op_data_t*)calloc_or_die(
         // Allocate:
@@ -157,22 +149,7 @@ bool osd_t::prepare_primary_rw(osd_op_t *cur_op)
         data_buf = (uint8_t*)data_buf + chain_size * stripe_count * clean_entry_bitmap_size;
         op_data->missing_flags = (uint8_t*)data_buf;
         data_buf = (uint8_t*)data_buf + chain_size * (pool_cfg.scheme == POOL_SCHEME_REPLICATED ? 0 : pg_it->second.pg_size);
-        // Copy chain
-        int chain_num = 0;
-        op_data->read_chain[chain_num] = cur_op->req.rw.inode;
-        op_data->chain_states[chain_num] = NULL;
-        chain_num++;
-        auto inode_it = st_cli.inode_config.find(cur_op->req.rw.inode);
-        while (inode_it != st_cli.inode_config.end() && inode_it->second.parent_id &&
-            INODE_POOL(inode_it->second.parent_id) == pool_cfg.id &&
-            // Check for loops
-            inode_it->second.parent_id != cur_op->req.rw.inode)
-        {
-            op_data->read_chain[chain_num] = inode_it->second.parent_id;
-            op_data->chain_states[chain_num] = NULL;
-            inode_it = st_cli.inode_config.find(inode_it->second.parent_id);
-            chain_num++;
-        }
+        memcpy(op_data->read_chain, read_chain.data(), sizeof(inode_t) * chain_size);
     }
     if (op_data->pg)
     {
