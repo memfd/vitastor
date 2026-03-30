@@ -1634,7 +1634,7 @@ void cluster_client_t::handle_op_part(cluster_op_part_t *part)
             if (op->opcode == OSD_OP_READ || op->opcode == OSD_OP_READ_BITMAP || op->opcode == OSD_OP_READ_CHAIN_BITMAP)
             {
                 for (auto & part: op->parts)
-                    if (part.flags == (PART_SENT|PART_VALID|PART_DONE))
+                    if ((part.flags & (PART_SENT|PART_VALID|PART_DONE)) == (PART_SENT|PART_VALID|PART_DONE))
                         copy_part_bitmap(op, &part);
             }
             if (op->opcode == OSD_OP_SYNC)
