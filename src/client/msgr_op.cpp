@@ -8,7 +8,6 @@
 osd_op_t::~osd_op_t()
 {
     assert(!bs_op);
-    assert(!op_data);
     if (bitmap_buf)
     {
         free(bitmap_buf);
@@ -22,6 +21,10 @@ osd_op_t::~osd_op_t()
         // Note: reusing osd_op_t WILL currently lead to memory leaks
         // So we don't reuse it, but free it every time
         free(buf);
+    }
+    if (op_data)
+    {
+        free(op_data);
     }
 }
 
