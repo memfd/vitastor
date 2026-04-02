@@ -229,4 +229,9 @@ public:
     uint64_t get_free_block_count();
     inline uint32_t get_bitmap_granularity() { return dsk.bitmap_granularity; }
     inline uint64_t get_journal_size() { return dsk.journal_len; }
+
+    inline uint64_t get_live_entries() { return heap->get_live_entries(); }
+    inline uint64_t get_live_memory() { return heap->get_live_memory(); }
+    inline uint64_t get_garbage_entries() { return heap->get_garbage_entries(); }
+    inline uint64_t get_garbage_memory() { return heap->get_garbage_memory(); }
 };

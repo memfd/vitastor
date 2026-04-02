@@ -529,6 +529,11 @@ void osd_t::exec_op(osd_op_t *cur_op)
 
 void osd_t::print_stats()
 {
+    if (bs && log_level > 1)
+    {
+        printf("[OSD %ju] Live entries: %ju (%ju bytes), garbage entries: %ju (%ju bytes)\n", osd_num,
+            bs->get_live_entries(), bs->get_live_memory(), bs->get_garbage_entries(), bs->get_garbage_memory());
+    }
     for (int i = OSD_OP_MIN; i <= OSD_OP_MAX; i++)
     {
         if (msgr.stats.op_stat_count[i] != prev_stats.op_stat_count[i] && i != OSD_OP_PING)

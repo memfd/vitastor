@@ -228,4 +228,9 @@ public:
     virtual uint64_t get_journal_size() = 0;
 
     virtual uint32_t get_bitmap_granularity() = 0;
+
+    virtual uint64_t get_live_entries() = 0;
+    virtual uint64_t get_live_memory() = 0;
+    virtual uint64_t get_garbage_entries() = 0;
+    virtual uint64_t get_garbage_memory() = 0;
 };

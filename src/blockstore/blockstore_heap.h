@@ -187,6 +187,11 @@ class blockstore_heap_t
     uint64_t buffer_area_used_space = 0;
     uint64_t data_used_space = 0;
 
+    uint64_t live_entries = 0;
+    uint64_t live_memory = 0;
+    uint64_t garbage_entries = 0;
+    uint64_t garbage_memory = 0;
+
     uint64_t next_lsn = 0;
     uint32_t last_allocated_block = UINT32_MAX;
     heap_mvcc_map_t object_mvcc;
@@ -348,6 +353,10 @@ public:
     uint32_t get_compact_queue_size();
     uint32_t get_to_compact_count();
     uint64_t get_compacted_count();
+    uint64_t get_live_entries();
+    uint64_t get_live_memory();
+    uint64_t get_garbage_entries();
+    uint64_t get_garbage_memory();
 
     uint64_t entry_pos(uint32_t block_num, uint32_t offset);
     heap_entry_t *entry_from_pos(uint64_t entry_pos, bool allow_unallocated = false);

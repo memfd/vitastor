@@ -332,6 +332,10 @@ public:
     inline uint64_t get_free_block_count() { return dsk.block_count - used_blocks; }
     inline uint32_t get_bitmap_granularity() { return dsk.disk_alignment; }
     inline uint64_t get_journal_size() { return dsk.journal_len; }
+    uint64_t get_live_entries();
+    uint64_t get_live_memory();
+    uint64_t get_garbage_entries();
+    uint64_t get_garbage_memory();
 };
 
 } // namespace v1

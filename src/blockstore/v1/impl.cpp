@@ -855,4 +855,29 @@ std::string blockstore_impl_t::get_op_diag(blockstore_op_t *op)
     return std::string(buf);
 }
 
+uint64_t blockstore_impl_t::get_live_entries()
+{
+    return used_blocks;
+}
+
+uint64_t blockstore_impl_t::get_live_memory()
+{
+    uint64_t used = 0;
+    for (auto & kv: clean_db_shards)
+    {
+        used += kv.second.size() * sizeof(blockstore_clean_db_t::value_type);
+    }
+    return used;
+}
+
+uint64_t blockstore_impl_t::get_garbage_entries()
+{
+    return dirty_db.size();
+}
+
+uint64_t blockstore_impl_t::get_garbage_memory()
+{
+    return sizeof(blockstore_dirty_db_t::node_type) * dirty_db.size();
+}
+
 } // namespace v1

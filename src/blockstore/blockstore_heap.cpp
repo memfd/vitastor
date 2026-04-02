@@ -29,6 +29,8 @@
 #define IMAP_MALLOC_LOW_BITS ((size_t)0x0F)
 #define IMAP_MAX_LOW 16
 
+#define list_item_overhead(a) (((a) + sizeof(heap_list_item_t) - sizeof(heap_entry_t) + sizeof(void*) + 15) & ~15)
+
 void inode_map_put(void* & inode_idx, heap_list_item_t* li);
 void inode_map_get(void *inode_idx, heap_inode_map_t::iterator & li_it, heap_list_item_t* & li, uint64_t stripe);
 void inode_map_free(void* inode_idx);
@@ -426,7 +428,10 @@ int blockstore_heap_t::load_blocks(uint64_t disk_offset, uint64_t size, uint8_t 
     entries_loaded = 0;
     return read_blocks(disk_offset, size, buf, allow_corrupted, [&](uint32_t block_num, heap_entry_t *wr_orig)
     {
-        heap_list_item_t *li = (heap_list_item_t*)malloc_or_die(wr_orig->size + sizeof(heap_list_item_t) - sizeof(heap_entry_t));
+        auto alloc_size = wr_orig->size + sizeof(heap_list_item_t) - sizeof(heap_entry_t);
+        heap_list_item_t *li = (heap_list_item_t*)malloc_or_die(alloc_size);
+        live_entries++;
+        live_memory += list_item_overhead(wr_orig->size);
         li->block_num = block_num;
         li->prev = li->next = NULL;
         memcpy(&li->entry, wr_orig, wr_orig->size);
@@ -611,6 +616,8 @@ int blockstore_heap_t::mark_used_blocks()
                 if (wr->entry_type == (BS_HEAP_DELETE|BS_HEAP_STABLE) && !li->prev)
                 {
                     wr->set_garbage();
+                    garbage_entries++;
+                    garbage_memory += list_item_overhead(wr->size);
                     modify_alloc(li->block_num, [&](heap_block_info_t & inf)
                     {
                         inf.garbage_space += wr->size;
@@ -623,6 +630,8 @@ int blockstore_heap_t::mark_used_blocks()
                     if (overwritten)
                     {
                         wr->set_garbage();
+                        garbage_entries++;
+                        garbage_memory += list_item_overhead(wr->size);
                         modify_alloc(li->block_num, [&](heap_block_info_t & inf)
                         {
                             inf.garbage_space += wr->size;
@@ -673,6 +682,13 @@ void blockstore_heap_t::recheck_buffer(heap_entry_t *cwr, uint8_t *buf)
     {
         uint32_t block_num = li->block_num;
         auto wr_size = li->entry.size;
+        if (li->entry.is_garbage())
+        {
+            garbage_entries--;
+            garbage_memory -= list_item_overhead(wr_size);
+        }
+        live_entries--;
+        live_memory -= list_item_overhead(wr_size);
         free(li);
         modify_alloc(block_num, [&](heap_block_info_t & inf)
         {
@@ -710,7 +726,12 @@ void blockstore_heap_t::recheck_buffer(heap_entry_t *cwr, uint8_t *buf)
             assert(li->entry.entry_type == cwr->entry_type);
             auto prev = li->prev;
             li->next = li->prev = NULL;
-            li->entry.set_garbage();
+            if (!li->entry.is_garbage())
+            {
+                garbage_entries++;
+                garbage_memory += list_item_overhead(li->entry.size);
+                li->entry.set_garbage();
+            }
             li = prev;
             rolled_back++;
         }
@@ -1317,6 +1338,8 @@ int blockstore_heap_t::add_entry(uint32_t wr_size, uint32_t *modified_block,
         *modified_block = block_num;
     }
     auto li = (heap_list_item_t*)malloc_or_die(wr_size + sizeof(heap_list_item_t) - sizeof(heap_entry_t));
+    live_entries++;
+    live_memory += list_item_overhead(wr_size);
     auto new_wr = &li->entry;
     auto & inf = block_info.at(block_num);
     if (!inf.entries.size())
@@ -1777,6 +1800,8 @@ void blockstore_heap_t::mark_garbage_up_to(heap_entry_t *wr)
 void blockstore_heap_t::mark_garbage(uint32_t block_num, heap_entry_t *prev_wr, uint32_t used_big)
 {
     prev_wr->set_garbage();
+    garbage_entries++;
+    garbage_memory += list_item_overhead(prev_wr->size);
     // And this is the moment when we can free the data reference
     if (prev_wr->type() == BS_HEAP_SMALL_WRITE && prev_wr->small().len > 0)
     {
@@ -2205,6 +2230,26 @@ uint64_t blockstore_heap_t::get_compacted_count()
     return compacted_count;
 }
 
+uint64_t blockstore_heap_t::get_live_entries()
+{
+    return live_entries-garbage_entries;
+}
+
+uint64_t blockstore_heap_t::get_live_memory()
+{
+    return live_memory-garbage_memory;
+}
+
+uint64_t blockstore_heap_t::get_garbage_entries()
+{
+    return garbage_entries;
+}
+
+uint64_t blockstore_heap_t::get_garbage_memory()
+{
+    return garbage_memory;
+}
+
 void blockstore_heap_t::push_inflight_lsn(uint64_t lsn, heap_entry_t *wr, uint64_t flags)
 {
     uint64_t next_inf = first_inflight_lsn + inflight_lsn.size();
@@ -2318,6 +2363,13 @@ void blockstore_heap_t::apply_inflight(heap_inflight_lsn_t & inflight)
                 mark_garbage(next->block_num, &next->entry, UINT32_MAX);
             }
         }
+        if (li->entry.is_garbage())
+        {
+            garbage_entries--;
+            garbage_memory -= list_item_overhead(li->entry.size);
+        }
+        live_entries--;
+        live_memory -= list_item_overhead(li->entry.size);
         free(li);
     }
 }
