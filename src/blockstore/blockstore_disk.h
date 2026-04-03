@@ -57,6 +57,8 @@ struct blockstore_disk_t
     bool inmemory_journal = true;
     // Data discard granularity and minimum size (for the sake of performance)
     bool discard_on_start = false;
+    // GC on start (new store)
+    bool gc_on_start = true;
     uint64_t min_discard_size = 1024*1024;
     uint64_t discard_granularity = 0;
 

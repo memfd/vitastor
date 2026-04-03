@@ -1990,6 +1990,7 @@ void test_redirect_intent_csums()
 
     // reload heap to check that the write is still here
     {
+        dsk.gc_on_start = false;
         blockstore_heap_t heap(&dsk, buffer_area.data(), 10);
         uint64_t entries_loaded;
         heap.load_blocks(0, dsk.meta_block_size, tmp.data(), false, entries_loaded);

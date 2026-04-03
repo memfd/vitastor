@@ -673,7 +673,51 @@ int blockstore_heap_t::mark_used_blocks()
             });
         }
     }
+    if (dsk->gc_on_start)
+    {
+        recheck_full_gc();
+    }
     return res;
+}
+
+void blockstore_heap_t::recheck_full_gc()
+{
+    uint32_t block_num = 0;
+    for (auto & inf: block_info)
+    {
+        // Instantly collect all garbage on restart
+        if (inf.garbage_space > 0)
+        {
+            if (log_level > 5)
+            {
+                fprintf(stderr, "Clearing %u out of %u garbage bytes in block %u\n", inf.garbage_space, inf.used_space, block_num);
+            }
+            uint32_t collected_garbage = 0;
+            size_t i = 0, j = 0;
+            for (; i < inf.entries.size(); i++)
+            {
+                if (inf.entries[i]->entry.is_garbage())
+                {
+                    collected_garbage += inf.entries[i]->entry.size;
+                    remove_list_item(inf.entries[i]);
+                }
+                else
+                {
+                    if (j != i)
+                        inf.entries[j] = inf.entries[i];
+                    j++;
+                }
+            }
+            inf.entries.resize(j);
+            modify_alloc(block_num, [&](heap_block_info_t & inf)
+            {
+                inf.used_space -= collected_garbage;
+                inf.garbage_space -= collected_garbage;
+            });
+            recheck_modified_blocks.insert(block_num);
+        }
+        block_num++;
+    }
 }
 
 void blockstore_heap_t::recheck_buffer(heap_entry_t *cwr, uint8_t *buf)
@@ -2336,42 +2380,48 @@ void blockstore_heap_t::apply_inflight(heap_inflight_lsn_t & inflight)
     {
         // Remove entry
         auto li = list_item(wr);
-        auto prev = li->prev;
-        auto next = li->next;
-        if (prev)
-        {
-            prev->next = next;
-        }
-        if (!next)
-        {
-            // The last freed entry must be a deletion
-            assert(!prev);
-            assert(wr->entry_type == BS_HEAP_DELETE|BS_HEAP_STABLE);
-            auto & pg_idx = block_index[get_pg_id(wr->inode, wr->stripe)];
-            auto & inode_idx = pg_idx[wr->inode];
-            heap_inode_map_t::iterator li_it;
-            heap_list_item_t *old_li = NULL;
-            inode_map_get(inode_idx, li_it, old_li, wr->stripe);
-            inode_map_erase(pg_idx, inode_idx, li_it, old_li);
-        }
-        else
-        {
-            next->prev = prev;
-            if (!prev && next->entry.entry_type == (BS_HEAP_DELETE|BS_HEAP_STABLE))
-            {
-                // free BS_HEAP_DELETEs when all previous entries are also freed
-                mark_garbage(next->block_num, &next->entry, UINT32_MAX);
-            }
-        }
-        if (li->entry.is_garbage())
-        {
-            garbage_entries--;
-            garbage_memory -= list_item_overhead(li->entry.size);
-        }
-        live_entries--;
-        live_memory -= list_item_overhead(li->entry.size);
-        free(li);
+        remove_list_item(li);
     }
+}
+
+void blockstore_heap_t::remove_list_item(heap_list_item_t *li)
+{
+    auto prev = li->prev;
+    auto next = li->next;
+    if (prev)
+    {
+        prev->next = next;
+    }
+    if (!next)
+    {
+        // The last freed entry must be a deletion
+        assert(!prev);
+        auto wr = &li->entry;
+        assert(wr->entry_type == BS_HEAP_DELETE|BS_HEAP_STABLE);
+        auto & pg_idx = block_index[get_pg_id(wr->inode, wr->stripe)];
+        auto & inode_idx = pg_idx[wr->inode];
+        heap_inode_map_t::iterator li_it;
+        heap_list_item_t *old_li = NULL;
+        inode_map_get(inode_idx, li_it, old_li, wr->stripe);
+        inode_map_erase(pg_idx, inode_idx, li_it, old_li);
+    }
+    else
+    {
+        next->prev = prev;
+        if (!prev && next->entry.entry_type == (BS_HEAP_DELETE|BS_HEAP_STABLE))
+        {
+            // free BS_HEAP_DELETEs when all previous entries are also freed
+            mark_garbage(next->block_num, &next->entry, UINT32_MAX);
+        }
+    }
+    if (li->entry.is_garbage())
+    {
+        garbage_entries--;
+        garbage_memory -= list_item_overhead(li->entry.size);
+    }
+    live_entries--;
+    live_memory -= list_item_overhead(li->entry.size);
+    free(li);
 }
 
 bool blockstore_heap_t::is_lsn_completed(uint64_t lsn)
