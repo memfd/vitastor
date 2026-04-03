@@ -240,7 +240,7 @@ resume_4:
     }
     // metadata read finished
     bs->heap->finish_load();
-    printf("Metadata entries loaded: %ju, used blocks: %ju / %ju\n", entries_loaded, bs->heap->get_data_used_space() / bs->dsk.data_block_size, bs->dsk.block_count);
+    printf("Metadata entries loaded: %ju, rechecking unfinished writes and garbage entries\n", entries_loaded);
     if (zero_on_init && !bs->dsk.disable_meta_fsync)
     {
         GET_SQE();
@@ -293,6 +293,11 @@ resume_7:
     if (bs->readonly)
     {
         recheck_mod.clear();
+        printf("Actual metadata entries: %ju\n", bs->heap->get_live_entries());
+    }
+    else
+    {
+        printf("Actual metadata entries: %ju, clearing garbage in %zu metadata blocks\n", bs->heap->get_live_entries(), recheck_mod.size());
     }
     for (i = 0; i < recheck_mod.size(); i++)
     {
@@ -332,5 +337,9 @@ resume_9:
     }
     free(metadata_buffer);
     metadata_buffer = NULL;
+    printf("Loading finished. Data used: %ju / %ju bytes (%s / %s)\n",
+        bs->heap->get_data_used_space(), bs->dsk.block_count * bs->dsk.data_block_size,
+        format_size(bs->heap->get_data_used_space()).c_str(),
+        format_size(bs->dsk.block_count * bs->dsk.data_block_size).c_str());
     return 0;
 }
