@@ -70,6 +70,7 @@ with an OSD restart or, for some of them, even without restarting by updating co
 - [use_atomic_flag](#use_atomic_flag)
 - [pg_reshard_chunk_size](#pg_reshard_chunk_size)
 - [pg_reshard_chunk_pause_ms](#pg_reshard_chunk_pause_ms)
+- [gc_on_start](#gc_on_start)
 
 ## bind_address
 
@@ -753,3 +754,9 @@ This option sets the maximum number of object is a chunk. Moving 100k objects us
 - Default: 100
 
 This option sets the interval between handling two PG count change chunks.
+
+## gc_on_start
+
+- Type: boolean
+
+Forcibly clean all garbage entries in the new store on every OSD restart.

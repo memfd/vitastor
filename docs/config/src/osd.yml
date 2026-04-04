@@ -938,3 +938,7 @@
     This option sets the interval between handling two PG count change chunks.
   info_ru: |
     Данная опция задаёт интервал между обработкой двух порций изменения числа PG пулов.
+- name: gc_on_start
+  type: bool
+  info: Forcibly clean all garbage entries in the new store on every OSD restart.
+  info_ru: Принудительно очищать все мусорные записи в новом хранилище при каждом запуске OSD.
