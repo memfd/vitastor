@@ -187,6 +187,8 @@ std::vector<msgr_rdma_context_t*> msgr_rdma_context_t::create_all(const std::vec
     ibv_device **raw_dev_list = NULL;
     ibv_device **dev_list = NULL;
     ibv_device *single_list[2] = {};
+    int up_ports = 0;
+    int single_port_num = 0;
 
     raw_dev_list = dev_list = ibv_get_device_list(NULL);
     if (!dev_list || !*dev_list)
@@ -221,6 +223,7 @@ std::vector<msgr_rdma_context_t*> msgr_rdma_context_t::create_all(const std::vec
         dev_list = single_list;
     }
 
+retry:
     for (int i = 0; dev_list[i]; ++i)
     {
         auto dev = dev_list[i];
@@ -258,6 +261,9 @@ std::vector<msgr_rdma_context_t*> msgr_rdma_context_t::create_all(const std::vec
                 fprintf(stderr, "RDMA device %s port %d GID %d does not exist\n", ibv_get_device_name(dev), port_num, sel_gid_index);
                 continue;
             }
+            up_ports++;
+            single_port_num = port_num;
+            single_list[0] = dev;
             uint32_t port_mtu = sel_mtu ? sel_mtu : ibv_mtu_to_bytes(portinfo.active_mtu);
 #ifdef IBV_ADVISE_MR_ADVICE_PREFETCH_NO_FAULT
             if (sel_gid_index < 0)
@@ -296,6 +302,14 @@ std::vector<msgr_rdma_context_t*> msgr_rdma_context_t::create_all(const std::vec
         }
 cleanup_dev:
         ibv_close_device(context);
+    }
+
+    if (!ret.size() && up_ports == 1 && dev_list != single_list)
+    {
+        // Auto-select the only available device/port if there is only one
+        dev_list = single_list;
+        sel_port_num = single_port_num;
+        goto retry;
     }
 
 cleanup:
