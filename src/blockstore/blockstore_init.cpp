@@ -311,7 +311,7 @@ resume_8:
         uint32_t block_num = recheck_mod[i];
         uint64_t block_offset = bs->dsk.meta_offset + (uint64_t)(block_num+1) * bs->dsk.meta_block_size;
         data = ((ring_data_t*)sqe->user_data);
-        uint8_t *buf = (uint8_t*)malloc_or_die(bs->dsk.meta_block_size);
+        uint8_t *buf = (uint8_t*)memalign_or_die(MEM_ALIGNMENT, bs->dsk.meta_block_size);
         bs->heap->get_meta_block(block_num, buf);
         data->iov = { buf, bs->dsk.meta_block_size };
         data->callback = [this, buf, block_offset](ring_data_t *data)
