@@ -1893,7 +1893,8 @@ void test_big_intent_csums()
         heap.finish_recheck();
 
         auto mod = heap.get_recheck_modified_blocks();
-        assert(mod.size() == 0);
+        assert(mod.size() == 1);
+        assert(mod[0] == 0);
 
         // read object 1 - big_intent should be there
         object_id oid = { .inode = INODE_WITH_POOL(1, 1), .stripe = 0 };

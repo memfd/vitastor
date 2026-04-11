@@ -334,19 +334,12 @@ corrupted_block:
                     block_num, block_offset, wr->size, sizeof(heap_entry_t));
                 goto corrupted_block;
             }
-            if (wr->is_garbage())
-            {
-                // Garbage collection is only performed when writing new entries into the block
-                // because it needs a fake LSN and modified blocks require consecutive modified LSNs
-                // That's why garbage entries may persist on disk
-                if (log_level > 5)
-                {
-                    fprintf(stderr, "Notice: skipping garbage entry %jx:%jx v%ju l%ju in metadata block %u at %u\n",
-                        wr->inode, wr->stripe, wr->version, wr->lsn, block_num, block_offset);
-                }
-                block_offset += wr->size;
-                continue;
-            }
+            // Garbage collection is only performed when writing new entries into the block
+            // because it needs a fake LSN and modified blocks require consecutive modified LSNs
+            // At the same time, further modifications _after_ putting new entries into the block,
+            // but _before_ writing it, may mark some entries in it as garbage. That's why garbage
+            // entries may still be present on disk.
+            wr->entry_type &= ~BS_HEAP_GARBAGE;
             if ((wr->entry_type & BS_HEAP_TYPE) < BS_HEAP_BIG_WRITE ||
                 (wr->entry_type & BS_HEAP_TYPE) > BS_HEAP_ROLLBACK ||
                 (wr->entry_type & ~(BS_HEAP_TYPE|BS_HEAP_STABLE)) ||
