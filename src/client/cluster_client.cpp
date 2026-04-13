@@ -590,7 +590,7 @@ void cluster_client_t::on_change_pool_config_hook()
         {
             if (log_level > 2 && pg_counts[pool_item.first])
             {
-                printf("Pool %u (%s) PG count changed from %lu to %lu\n", pool_item.first, pool_item.second.name.c_str(),
+                fprintf(stderr, "Pool %u (%s) PG count changed from %lu to %lu\n", pool_item.first, pool_item.second.name.c_str(),
                     pg_counts[pool_item.first], pool_item.second.real_pg_count);
             }
             // At this point, all pool operations should have been suspended
