@@ -37,6 +37,7 @@ function derive_osd_stats(st, prev, prev_diff)
         const n = c.count - BigInt(pr && pr.count||0);
         diff.recovery_stats[op] = { ...c, bps: n > 0 ? b*1000n/timediff : 0n, iops: n > 0 ? n*1000n/timediff : 0n };
     }
+    diff.inode_stats = {};
     for (const pool_id in st.inode_stats||{})
     {
         diff.inode_stats[pool_id] = {};
