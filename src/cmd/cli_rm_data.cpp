@@ -286,6 +286,8 @@ struct rm_inode_t
                     .data = data,
                 };
             }
+            // Wakeup callers (otherwise they wake up only on next loop())
+            parent->ringloop->wakeup();
         }
         in_continue = false;
     }
