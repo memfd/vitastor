@@ -33,6 +33,9 @@ struct nfs_kv_read_state
 
 static void nfs_kv_continue_read(nfs_kv_read_state *st, int state)
 {
+    uint64_t offset_plus_hdr = 0, offset_plus_size = 0;
+    bool bad_offset = __builtin_add_overflow(st->offset, (uint64_t)sizeof(shared_file_header_t), &offset_plus_hdr) ||
+        __builtin_add_overflow(st->offset, st->size, &offset_plus_size);
     if (state == 0)      {}
     else if (state == 1) goto resume_1;
     else if (state == 2) goto resume_2;
@@ -44,7 +47,7 @@ static void nfs_kv_continue_read(nfs_kv_read_state *st, int state)
         abort();
     }
 resume_0:
-    if (st->offset + sizeof(shared_file_header_t) < st->self->parent->kvfs->shared_inode_threshold)
+    if (!bad_offset && offset_plus_hdr < st->self->parent->kvfs->shared_inode_threshold)
     {
         kv_read_inode(st->self->parent, st->ino, [st](int res, const std::string & value, json11::Json attrs)
         {
@@ -94,23 +97,35 @@ resume_1:
                     st->op->iov.push_back(st->self->parent->kvfs->scrap_block.data(),
                         read_offset-st->op->offset);
                 }
-                auto read_size = st->offset+st->size;
+                auto read_size = offset_plus_size;
                 if (read_size > st->ientry["size"].uint64_value())
                 {
                     st->eof = 1;
                     st->size = st->ientry["size"].uint64_value()-st->offset;
                     read_size = st->ientry["size"].uint64_value();
                 }
-                read_size += sizeof(shared_file_header_t);
+                if (__builtin_add_overflow(read_size, (uint64_t)sizeof(shared_file_header_t), &read_size))
+                {
+                    st->res = -EOVERFLOW;
+                    nfs_kv_continue_read(st, 2);
+                    return;
+                }
                 assert(!st->aligned_buf);
                 st->aligned_buf = (uint8_t*)st->self->malloc_or_rdma(st->rop, read_size);
                 st->buf = st->aligned_buf + sizeof(shared_file_header_t) + st->offset;
                 st->op->iov.push_back(st->aligned_buf, read_size);
-                st->op->len = align_up(read_offset+read_size) - st->op->offset;
-                if (read_offset+read_size < st->op->offset+st->op->len)
+                uint64_t end_offset = 0;
+                if (__builtin_add_overflow(read_offset, read_size, &end_offset))
+                {
+                    st->res = -EOVERFLOW;
+                    nfs_kv_continue_read(st, 2);
+                    return;
+                }
+                st->op->len = align_up(end_offset) - st->op->offset;
+                if (end_offset < st->op->offset+st->op->len)
                 {
                     st->op->iov.push_back(st->self->parent->kvfs->scrap_block.data(),
-                        st->op->offset+st->op->len - (read_offset+read_size));
+                        st->op->offset+st->op->len - end_offset);
                 }
             }
             st->op->callback = [st](cluster_op_t *op)
@@ -183,8 +198,14 @@ resume_4:
             return;
         }
     }
+    if (bad_offset)
+    {
+        auto cb = std::move(st->cb);
+        cb(-EOVERFLOW);
+        return;
+    }
     st->aligned_offset = align_down(st->offset);
-    st->aligned_size = align_up(st->offset+st->size) - st->aligned_offset;
+    st->aligned_size = align_up(offset_plus_size) - st->aligned_offset;
     assert(!st->aligned_buf);
     st->aligned_buf = (uint8_t*)st->self->malloc_or_rdma(st->rop, st->aligned_size);
     st->buf = st->aligned_buf + st->offset - st->aligned_offset;
