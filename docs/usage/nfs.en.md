@@ -262,3 +262,4 @@ Options:
 | `--logfile <FILE>` | log to the specified file                                |
 | `--enforce 1`      | enforce permissions at the server side (no by default)   |
 | `--foreground 1`   | stay in foreground, do not daemonize                     |
+| `--trace`          | trace all NFS requests                                   |

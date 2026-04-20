@@ -121,6 +121,7 @@ static const char* help_text =
     "  --logfile <FILE>  log to the specified file\n"
     "  --enforce 1       enforce permissions at the server side (default is disabled)\n"
     "  --foreground 1    stay in foreground, do not daemonize\n"
+    "  --trace           trace all NFS requests\n"
     "\n"
     "NFS proxy is stateless if you use immediate_commit=all in your cluster and if\n"
     "you do not use client_enable_writeback=true, so you can freely use multiple\n"
@@ -158,7 +159,7 @@ json11::Json::object nfs_proxy_t::parse_args(int narg, const char *args[])
         {
             const char *opt = args[i]+2;
             cfg[str_replace(opt, "-", "_")] = !strcmp(opt, "json") || !strcmp(opt, "block") ||
-                !strcmp(opt, "dry-run") || !strcmp(opt, "recalc-stats") ||
+                !strcmp(opt, "dry-run") || !strcmp(opt, "recalc-stats") || !strcmp(opt, "trace") ||
                 !strcmp(opt, "include-empty") || !strcmp(opt, "no-rm") || i == narg-1 ? "1" : args[++i];
         }
         else
