@@ -83,6 +83,8 @@ void osd_t::finish_op(osd_op_t *cur_op, int retval)
             rm_inflight(pg);
         }
         assert(!cur_op->op_data->subops);
+        free(cur_op->op_data);
+        cur_op->op_data = NULL;
     }
     cur_op->reply.hdr.magic = SECONDARY_OSD_REPLY_MAGIC;
     cur_op->reply.hdr.id = cur_op->req.hdr.id;
