@@ -1119,6 +1119,13 @@ resume_2:
         // Finished successfully
         // Even if the PG count has changed in meanwhile we treat it as success
         // because if some operations were invalid for the new PG count we'd get errors
+        if (op->opcode == OSD_OP_READ || op->opcode == OSD_OP_READ_BITMAP || op->opcode == OSD_OP_READ_CHAIN_BITMAP)
+        {
+            // Copy part bitmaps only after finishing all part reads
+            for (auto & part: op->parts)
+                if ((part.flags & (PART_SENT|PART_DONE|PART_VALID)) == (PART_SENT|PART_DONE|PART_VALID))
+                    copy_part_bitmap(op, &part);
+        }
         if (op->opcode == OSD_OP_READ || op->opcode == OSD_OP_READ_CHAIN_BITMAP)
         {
             // Check parent inode
@@ -1630,13 +1637,6 @@ void cluster_client_t::handle_op_part(cluster_op_part_t *part)
         }
         if (op->inflight_count == 0 && !op->retry_after)
         {
-            // Copy part bitmaps only after finishing all part reads
-            if (op->opcode == OSD_OP_READ || op->opcode == OSD_OP_READ_BITMAP || op->opcode == OSD_OP_READ_CHAIN_BITMAP)
-            {
-                for (auto & part: op->parts)
-                    if ((part.flags & (PART_SENT|PART_VALID|PART_DONE)) == (PART_SENT|PART_VALID|PART_DONE))
-                        copy_part_bitmap(op, &part);
-            }
             if (op->opcode == OSD_OP_SYNC)
                 continue_sync(op);
             else
