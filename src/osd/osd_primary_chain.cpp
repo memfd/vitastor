@@ -82,6 +82,7 @@ int osd_t::read_bitmaps(osd_op_t *cur_op, pg_t *pg, int base_state)
         goto resume_0;
     else if (op_data->st == base_state+1)
         goto resume_1;
+    assert(op_data->st < base_state);
     if (!pg || pg->state == PG_ACTIVE && pg->scheme == POOL_SCHEME_REPLICATED)
     {
         // Happy path for clean replicated PGs (all bitmaps are available locally)
@@ -112,6 +113,12 @@ resume_0:
             return 1;
         }
 resume_1:
+        if (op_data->errors > 0)
+        {
+            // Failure
+            finish_op(cur_op, op_data->errcode);
+            return -1;
+        }
         if (pg->scheme != POOL_SCHEME_REPLICATED)
         {
             for (int chain_num = 0; chain_num < op_data->chain_size; chain_num++)
@@ -607,7 +614,7 @@ void osd_t::send_chained_read_results(pg_t *pg, osd_op_t *cur_op)
         {
             if (cur > prev)
             {
-                 // Send buffer in parts to avoid copying
+                // Send buffer in parts to avoid copying
                 if (!prev_set)
                 {
                     while ((cur-prev) > zero_buffer_size/bs_bitmap_granularity)
