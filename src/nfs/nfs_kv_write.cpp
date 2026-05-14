@@ -346,13 +346,21 @@ static void nfs_do_fsync(nfs_kv_write_state *st, int state)
 
 static bool nfs_do_shared_readmodify(nfs_kv_write_state *st, int base_state, int state)
 {
+    uint64_t end_offset = 0;
+    bool bad_offset = __builtin_add_overflow(st->offset, st->size, &end_offset);
     assert(state <= base_state);
     if (state < base_state)       goto resume_0;
     else if (state == base_state) goto resume_1;
 resume_0:
+    if (bad_offset)
+    {
+        auto cb = std::move(st->cb);
+        cb(-EOVERFLOW);
+        return false;
+    }
     if (st->ientry["shared_ino"].uint64_value() != 0 &&
         st->ientry["size"].uint64_value() != 0 &&
-        (st->offset > 0 || (st->offset+st->size) < st->new_size))
+        (st->offset > 0 || end_offset < st->new_size))
     {
         // Read old data if shared non-empty and not fully overwritten
         nfs_do_shared_read(st, base_state);
@@ -756,6 +764,9 @@ resume_1:
 
 static void nfs_kv_continue_write(nfs_kv_write_state *st, int state)
 {
+    uint64_t end_offset = 0, end_plus_hdr = 0;
+    bool bad_offset = __builtin_add_overflow(st->offset, st->size, &end_offset) ||
+        __builtin_add_overflow(end_offset, (uint64_t)sizeof(shared_file_header_t), &end_plus_hdr);
     if (state == 0)      {}
     else if (state == 1) goto resume_1;
     else if (state == 2) goto resume_2;
@@ -812,22 +823,28 @@ resume_1:
     }
     st->was_immediate = st->proxy->cli->get_immediate_commit(st->ino);
     st->new_size = st->ientry["size"].uint64_value();
-    if (st->new_size < st->offset + st->size)
+    if (bad_offset)
     {
-        st->new_size = st->offset + st->size;
+        auto cb = std::move(st->cb);
+        cb(-EOVERFLOW);
+        return;
     }
-    if (st->offset + st->size + sizeof(shared_file_header_t) < st->proxy->kvfs->shared_inode_threshold)
+    if (st->new_size < end_offset)
+    {
+        st->new_size = end_offset;
+    }
+    if (end_plus_hdr < st->proxy->kvfs->shared_inode_threshold)
     {
         if (// Zero size, should be allocated to handle write
             st->ientry["size"].uint64_value() == 0 &&
             st->ientry["shared_ino"].uint64_value() == 0 &&
-            st->offset+st->size > 0 ||
+            end_offset > 0 ||
             // Empty with non-zero size, fits shared inode threshold
             st->ientry["empty"].bool_value() &&
             (st->ientry["size"].uint64_value() + sizeof(shared_file_header_t)) < st->proxy->kvfs->shared_inode_threshold ||
             // Shared, does not fit currently allocated shared inode space
             st->ientry["shared_ino"].uint64_value() != 0 &&
-            st->ientry["shared_alloc"].uint64_value() < sizeof(shared_file_header_t)+st->offset+st->size ||
+            st->ientry["shared_alloc"].uint64_value() < sizeof(shared_file_header_t)+end_offset ||
             // Shared, requested to be moved away forcibly by defrag
             st->force_move_from_inode != 0 &&
             st->ientry["shared_ino"].uint64_value() == st->force_move_from_inode &&
